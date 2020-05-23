@@ -27,6 +27,8 @@ import java.util.logging.Logger;
  * @author David Mimno, Andrew McCallum
  */
 
+
+
 public abstract class ParallelTopicModelHyper implements Serializable {
 
 	public static final int UNASSIGNED_TOPIC = -1;

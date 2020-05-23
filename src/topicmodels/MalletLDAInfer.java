@@ -1,5 +1,6 @@
 package topicmodels;
 
+import cc.mallet.topics.ParallelTopicModel;
 import cc.mallet.topics.TopicAssignment;
 import cc.mallet.types.*;
 import cc.mallet.util.CommandOption;
@@ -12,7 +13,7 @@ import com.jmatio.types.MLDouble;
 import java.io.*;
 import java.util.ArrayList;
 
-public class MetaLDAInfer implements Serializable {
+public class MalletLDAInfer implements Serializable {
 
     protected int numTopics;
 
@@ -28,8 +29,6 @@ public class MetaLDAInfer implements Serializable {
 
     Alphabet trainAlphabet;
 
-    Alphabet trainTargetAlphabet;
-
     protected Randoms random = null;
 
     int sampleAlphaMethod;
@@ -42,67 +41,17 @@ public class MetaLDAInfer implements Serializable {
      * Inference for test docs, ignoring unseen words
      *
      */
-    public MetaLDAInfer(String saveFolderName) {
+    public MalletLDAInfer(ParallelTopicModel model) {
 
-        MatFileReader matReader = null;
-        try {
-            matReader = new MatFileReader(saveFolderName + "/train_stats.mat");
-        } catch (IOException e) {
-            e.printStackTrace();
-            System.err.println("Reading training info error!");
-            System.exit(-1);
-        }
+        Alphabet trainAlphabet = model.alphabet;
 
-        Alphabet trainAlphabet = null;
+        double[] alpha = model.alpha;
 
-        Alphabet trainTargetAlphabet = null;
+        double beta = model.beta;
 
-        try {
-            trainAlphabet = AlphabetFactory.loadFromFile(new File(saveFolderName + "/train_alphabet.txt"));
-            trainTargetAlphabet = AlphabetFactory.loadFromFile(new File(saveFolderName + "/train_target_alphabet.txt"));
-        } catch (IOException e) {
-            e.printStackTrace();
-            System.err.println("Reading training alphabets error!");
-            System.exit(-1);
-        }
-
-        MLDouble testPhiMat = null;
-
-        int sampleAlphaMethod = Integer.parseInt(((MLChar) matReader.getMLArray("sampleAlphaMethod")).getString(0));
-
-        int sampleBetaMethod = Integer.parseInt(((MLChar) matReader.getMLArray("sampleBetaMethod")).getString(0));
-
-        double[][] alpha = ((MLDouble) matReader.getMLArray("alpha")).getArray();
-
-        double[][] beta = ((MLDouble) matReader.getMLArray("beta")).getArray();
-
-        double[][] topicTypeCounts = ((MLDouble) matReader.getMLArray("topic_type")).getArray();
-
-        double[][] phi = new double[beta.length][];
-
-        for (int k = 0; k < phi.length; k++) {
-            phi[k] = new double[beta[0].length];
-
-            double sumPhi = 0;
-            for (int v = 0; v < phi[k].length; v++) {
-                phi[k][v] = beta[k][v] + topicTypeCounts[k][v];
-                sumPhi += phi[k][v];
-            }
-            for (int v = 0; v < phi[k].length; v++) {
-                phi[k][v] /= sumPhi;
-
-            }
-
-        }
-
-        double[][] lambda = null;
-        if (sampleAlphaMethod == 1) {
-            lambda = ((MLDouble) matReader.getMLArray("lambda")).getArray();
-        }
+        double[][] phi = getPhi(model);
 
         this.trainAlphabet = trainAlphabet;
-
-        this.trainTargetAlphabet = trainTargetAlphabet;
 
         numTopics = phi.length;
         numTrainTypes = phi[0].length;
@@ -113,26 +62,50 @@ public class MetaLDAInfer implements Serializable {
 
         this.sampleAlphaMethod = 0;
 
-        if (sampleAlphaMethod == 1) {
-            this.oneAlpha = new double[0];
-            this.lambda = lambda;
+        this.oneAlpha = model.alpha;
 
-            this.sampleAlphaMethod = 1;
-
-            this.numDocFeatures = lambda.length;
-
-            this.docDefaultFeatureIndex = this.numDocFeatures - 1;
-        } else {
-            this.oneAlpha = alpha[0];
-        }
     }
 
-    public MetaLDAInfer(Alphabet alphabet, Alphabet targetAlphabet,
+    private double[][] getPhi(ParallelTopicModel model) {
+
+        double[][] phi;
+
+        double[][] topicTypeCounts = new double[numTopics][model.numTypes];
+
+        for (int type = 0; type < model.numTypes; type++) {
+            int[] topicCounts = model.typeTopicCounts[type];
+            int[] counts = model.typeTopicCounts[type];
+            for (int topic = 0; topic < numTopics; topic++) {
+                int count = counts[topic];
+                topicTypeCounts[topic][type] += count;
+
+            }
+        }
+
+        phi = new double[numTopics][];
+
+        for (int k = 0; k < numTopics; k++) {
+            phi[k] = new double[model.numTypes];
+
+            double sumPhi = 0;
+            for (int v = 0; v < phi[k].length; v++) {
+                phi[k][v] = model.beta + topicTypeCounts[k][v];
+                sumPhi += phi[k][v];
+            }
+            for (int v = 0; v < phi[k].length; v++) {
+                phi[k][v] /= sumPhi;
+
+            }
+
+        }
+
+        return phi;
+    }
+
+    public MalletLDAInfer(Alphabet alphabet,
             double[] alpha, double[][] phi) {
 
         this.trainAlphabet = alphabet;
-
-        this.trainTargetAlphabet = targetAlphabet;
 
         numTopics = phi.length;
         numTrainTypes = phi[0].length;
@@ -144,21 +117,6 @@ public class MetaLDAInfer implements Serializable {
         this.phi = phi;
 
         this.sampleAlphaMethod = 0;
-    }
-
-    public MetaLDAInfer(Alphabet alphabet, Alphabet targetAlphabet,
-            double[][] lambda, double[][] phi) {
-
-        this(alphabet, targetAlphabet, new double[0], phi);
-
-        this.lambda = lambda;
-
-        this.sampleAlphaMethod = 1;
-
-        this.numDocFeatures = lambda.length;
-
-        this.docDefaultFeatureIndex = this.numDocFeatures - 1;
-
     }
 
     public void setRandomSeed(int seed) {
@@ -331,28 +289,7 @@ public class MetaLDAInfer implements Serializable {
 
         for (Instance instance : instances) {
 
-            alpha[doc] = new double[numTopics];
-
-            if (this.sampleAlphaMethod == 1) {
-                /*compute alpha according to the labels of a test doc*/
-                FeatureVector feature = (FeatureVector) instance.getTarget();
-                int[] featureIndices = feature.getIndices();
-                for (int topic = 0; topic < numTopics; topic++) {
-                    alpha[doc][topic] = 1.0;
-                    for (int f = 0; f < featureIndices.length; f++) {
-                        String label = (String) instance.getTargetAlphabet().lookupObject(featureIndices[f]);
-
-                        int fid = this.trainTargetAlphabet.lookupIndex(label, false);
-                        if (fid < this.trainTargetAlphabet.size() && fid != -1) {
-                            alpha[doc][topic] *= lambda[fid][topic];
-                        }
-                    }
-                    alpha[doc][topic] *= lambda[docDefaultFeatureIndex][topic];
-                }
-
-            } else {
-                alpha[doc] = this.oneAlpha;
-            }
+            alpha[doc] = this.oneAlpha;
 
             docTopic[doc]
                     = getSampledDistribution(instance, data.get(doc).topicSequence, alpha[doc], numIterations,
@@ -436,32 +373,32 @@ public class MetaLDAInfer implements Serializable {
     }
 
     static CommandOption.String testDocInputFile
-            = new cc.mallet.util.CommandOption.String(MetaLDAInfer.class, "test-docs", "FILENAME", true, null,
+            = new cc.mallet.util.CommandOption.String(MalletLDAInfer.class, "test-docs", "FILENAME", true, null,
                     "The filename from which to read the list of testing instances.  Use - for stdin.  "
                     + "The instances must be FeatureSequence, not FeatureVector", null);
 
     static CommandOption.String saveFolderName
-            = new cc.mallet.util.CommandOption.String(MetaLDAInfer.class, "save-folder", "FILENAME", true, null,
+            = new cc.mallet.util.CommandOption.String(MalletLDAInfer.class, "save-folder", "FILENAME", true, null,
                     "the folder that saves the statistics", null);
 
     // Model parameters
     static CommandOption.Integer numInferenceIterationsOption
-            = new CommandOption.Integer(MetaLDAInfer.class, "num-iterations", "INTEGER", true, 200,
+            = new CommandOption.Integer(MalletLDAInfer.class, "num-iterations", "INTEGER", true, 200,
                     "The number of inference iterations of Gibbs sampling. Default is 200.", null);
 
     static CommandOption.Integer randomSeedOption
-            = new CommandOption.Integer(MetaLDAInfer.class, "random-seed", "INTEGER", true, -1,
+            = new CommandOption.Integer(MalletLDAInfer.class, "random-seed", "INTEGER", true, -1,
                     "The random seed for the Gibbs sampler.  Default is -1, which will use the clock.", null);
 
     static CommandOption.Boolean isComputePerplexity
-            = new CommandOption.Boolean(MetaLDAInfer.class, "compute-perplexity", "true|false", false, false,
+            = new CommandOption.Boolean(MalletLDAInfer.class, "compute-perplexity", "true|false", false, false,
                     "Whether infer the model on the every first words and compute perplexity on the every second words. Default is false.", null);
 
     public static void main(String[] args) {
 
-        CommandOption.setSummary(MetaLDAInfer.class,
+        CommandOption.setSummary(MalletLDAInfer.class,
                 "MetaLDA: inference on new documents");
-        CommandOption.process(MetaLDAInfer.class, args);
+        CommandOption.process(MalletLDAInfer.class, args);
 
         if (testDocInputFile.value != null) {
 
@@ -523,13 +460,9 @@ public class MetaLDAInfer implements Serializable {
                 lambda = ((MLDouble) matReader.getMLArray("lambda")).getArray();
             }
 
-            MetaLDAInfer inferencer = null;
+            MalletLDAInfer inferencer = null;
 
-            if (sampleAlphaMethod == 1) {
-                inferencer = new MetaLDAInfer(trainAlphabet, trainTargetAlphabet, lambda, phi);
-            } else {
-                inferencer = new MetaLDAInfer(trainAlphabet, trainTargetAlphabet, alpha[0], phi);
-            }
+            inferencer = new MalletLDAInfer(trainAlphabet, alpha[0], phi);
 
             inferencer.setRandomSeed(randomSeedOption.value);
 
