@@ -434,6 +434,10 @@ public class MetaLDAInfer implements Serializable {
         }
         return ret;
     }
+    
+    //--test-docs ./data/DBLP_200T_300IT_3000CHRs_5M_WVLmt_10000TwoWay/test_doc.mallet --save-folder ./data/DBLP_200T_300IT_3000CHRs_5M_WVLmt_10000TwoWay --compute-perplexity true
+    
+
 
     static CommandOption.String testDocInputFile
             = new cc.mallet.util.CommandOption.String(MetaLDAInfer.class, "test-docs", "FILENAME", true, null,
@@ -467,9 +471,12 @@ public class MetaLDAInfer implements Serializable {
 
             InstanceList testDocs = InstanceList.load(new File(testDocInputFile.value));
 
+            
             MatFileReader matReader = null;
             try {
                 matReader = new MatFileReader(saveFolderName.value + "/train_stats.mat");
+                
+                
             } catch (IOException e) {
                 e.printStackTrace();
                 System.err.println("Reading training info error!");

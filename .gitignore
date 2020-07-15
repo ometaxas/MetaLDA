@@ -4,6 +4,11 @@
 # Log file
 *.log
 
+#model, txt xml files
+*.txt
+*.mallet
+*.xml
+
 # BlueJ files
 *.ctxt
 
@@ -24,3 +29,4 @@ hs_err_pid*
 target/
 .idea/
 .DS_Store
+/data/

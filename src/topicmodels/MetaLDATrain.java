@@ -51,17 +51,20 @@ public class MetaLDATrain extends ParallelTopicModelHyper {
     protected ArrayList<int[]> wordFeatureList; // just for the words in the training docs
 
     /**
+     * 0. fixed.
      * 1. full alpha matrix optimised with doc labels 
      * 2. Asymmetric alpha (each column (topic) optimised with default doc labels) 
-     * 3. Symmetric alpha (same value for all alpha) 0. fixed.
+     * 3. Symmetric alpha (same value for all alpha) 
+     * 
      *
      */
     protected int sampleAlphaMethod;
 
     /**
+     * 0. fixed.
      * 1. full beta matrix optimised with word features 
      * 2. Asymmetric beta (each row (topic) optimised with default word features) 
-     * 3. Symmetric beta (same value for all beta) 0. fixed.
+     * 3. Symmetric beta (same value for all beta) 
      *
      */
     protected int sampleBetaMethod;
@@ -896,7 +899,7 @@ public class MetaLDATrain extends ParallelTopicModelHyper {
 
     // Model parameters
     static CommandOption.Integer numIterationsOption
-            = new CommandOption.Integer(MetaLDATrain.class, "num-iterations", "INTEGER", true, 2000,
+            = new CommandOption.Integer(MetaLDATrain.class, "num-iterations", "INTEGER", true, 500,
                     "The number of iterations of Gibbs sampling. Default is 2000.", null);
 
     static CommandOption.Integer randomSeedOption
@@ -942,6 +945,7 @@ public class MetaLDATrain extends ParallelTopicModelHyper {
 
     public static void main(String[] args) {
 
+        //--train-docs ./data/WS/train_doc.mallet  --num-topics 50 --word-features ./data/WS/binary_embeddings.txt --save-folder ./data --sample-alpha-method 1 --sample-beta-method 3
         CommandOption.setSummary(MetaLDATrain.class,
                 "MetaLDA, a topic model that incorporates meta information");
         CommandOption.process(MetaLDATrain.class, args);
@@ -986,7 +990,7 @@ public class MetaLDATrain extends ParallelTopicModelHyper {
         metaLda.addInstances(training);
 
         //do not display topics while training
-        metaLda.setTopicDisplay(0, 0);
+        metaLda.setTopicDisplay(10, 10);
 
         if (wordInputFile.value != null) {
             metaLda.addWordFeaturesFile(new File(wordInputFile.value));
